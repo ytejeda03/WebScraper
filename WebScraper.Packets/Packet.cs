@@ -69,6 +69,8 @@ namespace WebScraper.Packets
 
     public enum PacketType
     {
-
+        Request,
+        Response,
+        Error
     }
 }
