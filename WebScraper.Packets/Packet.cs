@@ -17,9 +17,9 @@ namespace WebScraper.Packets
         public string senderID;
         public PacketType packetType;
 
-        public Packet(PacketType packetType, string senderID)
+        public Packet(PacketType packetType, string senderID, List<string> packetData)
         {
-            this.packetData = new List<string>();
+            this.packetData = packetData;
             this.senderID = senderID;
             this.packetType = packetType;
         }
@@ -69,9 +69,8 @@ namespace WebScraper.Packets
 
     public enum PacketType
     {
-        Welcome,
         Request,
-        DownloadStatus,
-        Error
+        Response,
+        Error,
     }
 }
