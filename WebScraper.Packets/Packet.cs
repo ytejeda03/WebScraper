@@ -1,12 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+=======
 using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace WebScraper.Packets
 {
@@ -20,6 +21,13 @@ namespace WebScraper.Packets
         public Packet(PacketType packetType, string senderID)
         {
             this.packetData = new List<string>();
+            this.senderID = senderID;
+            this.packetType = packetType;
+        }
+            
+        public Packet(PacketType packetType, string senderID, List<string> packetData)
+        {
+            this.packetData = packetData;
             this.senderID = senderID;
             this.packetType = packetType;
         }
