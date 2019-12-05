@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+=======
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -17,6 +18,13 @@ namespace WebScraper.Packets
         public string senderID;
         public PacketType packetType;
 
+        public Packet(PacketType packetType, string senderID)
+        {
+            this.packetData = new List<string>();
+            this.senderID = senderID;
+            this.packetType = packetType;
+        }
+            
         public Packet(PacketType packetType, string senderID, List<string> packetData)
         {
             this.packetData = packetData;
@@ -71,6 +79,6 @@ namespace WebScraper.Packets
     {
         Request,
         Response,
-        Error,
+        Error
     }
 }
