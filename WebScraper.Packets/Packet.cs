@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace WebScraper.Packets
 {
-    public class Class1
+    public class Packet
     {
     }
 }
