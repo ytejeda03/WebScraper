@@ -13,19 +13,27 @@ namespace WebScraper.Server
 {
     class Server
     {
-        static Socket listenerSocket;
+        static Socket clientListener;
         static List<ClientData> connectedClients;
-        
+        static bool clientConnected = false;
         static void Main(string[] args)
         {
+            // averiguar si ya hay alguien en la red con chord y conectarme
+
+            // sino bootear el chord yo
+
+            Thread serverListenerT = new Thread(listenUdp);
+            serverListenerT.Start();
+           
+
             Console.WriteLine("Comenzando servidor en " + Packet.GetIp4Address() + ":8000");
 
-            listenerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            clientListener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             connectedClients = new List<ClientData>();
 
             IPEndPoint ip = new IPEndPoint(IPAddress.Parse(Packet.GetIp4Address()), 8000);
 
-            listenerSocket.Bind(ip);
+            clientListener.Bind(ip);
 
             Thread listenThread = new Thread(ListenThread);
 
@@ -33,12 +41,59 @@ namespace WebScraper.Server
 
         }
 
+        private static void listenUdp()
+        {
+            UdpClient serverListener = new UdpClient();
+            serverListener.Client.Bind(new IPEndPoint(IPAddress.Any, 8001));
+
+            var from = new IPEndPoint(0, 0);
+            while (true)
+            {
+                byte[] recvBuffer = serverListener.Receive(ref from);
+                Packet p = new Packet(recvBuffer);
+                if(p.packetType == PacketType.Join)
+                {
+                    Console.WriteLine(p.packetData[0] + " quiere unirse a la red de servidores");
+                    Thread.Sleep(1000);
+                    Thread t = new Thread(connectToNewServer);
+                    t.Start(p.packetData[0]);
+                    Thread.Sleep(1000);
+                    if (!clientConnected)
+                    {
+                        t.Abort();
+                    }
+                    
+                }
+            }
+
+        }
+
+        private static void connectToNewServer(object cIP)
+        {
+            string ip = (string)cIP;
+
+            Socket newServerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            IPEndPoint ipE = new IPEndPoint(IPAddress.Parse(ip), 8002);
+
+            try
+            {
+                newServerSocket.Connect(ipE);
+                clientConnected = true;
+                Console.WriteLine(ip + " se ha unido a la red de servidores");
+                // meterlo en el chord
+            }
+            catch
+            {
+                Console.WriteLine("No se ha podido agregar a " + ip + " a la red de servidores");
+            }
+        }
+
         private static void ListenThread()
         {
             while (true)
             {
-                listenerSocket.Listen(0);
-                connectedClients.Add(new ClientData(listenerSocket.Accept()));
+                clientListener.Listen(0);
+                connectedClients.Add(new ClientData(clientListener.Accept()));
             }
         }
 
