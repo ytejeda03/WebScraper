@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.IO;
 using System.Threading;
 using WebScraper.Packets;
+using System.Diagnostics;
 
 namespace WebScraper.Server
 {
@@ -16,16 +17,17 @@ namespace WebScraper.Server
         static Socket clientListener;
         static List<ClientData> connectedClients;
         static bool clientConnected = false;
+        static Socket listenerSocketServer;
+        static bool iAmTheBoot = true;
+        static int portUDP = 8001;
+        static int portTCP = 8002;
+        static int GUID;
+
         static void Main(string[] args)
         {
-            // averiguar si ya hay alguien en la red con chord y conectarme
-
-            // sino bootear el chord yo
-
+            JoinToChord();
             Thread serverListenerT = new Thread(listenUdp);
             serverListenerT.Start();
-           
-
             Console.WriteLine("Comenzando servidor en " + Packet.GetIp4Address() + ":8000");
 
             clientListener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -87,6 +89,37 @@ namespace WebScraper.Server
                 Console.WriteLine("No se ha podido agregar a " + ip + " a la red de servidores");
             }
         }
+      
+        private static void JoinToChord()
+        {
+            Console.WriteLine("Uniendo Servidor a la Red");
+            UdpClient udpClient = new UdpClient();
+            udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, portUDP));
+            var data = new List<string> { Packet.GetIp4Address(), portTCP.ToString() };
+            Packet p = new Packet(PacketType.Join, String.Empty, data);
+            udpClient.Send(p.ToBytes(), p.ToBytes().Length, "255.255.255.255", portUDP);
+            listenerSocketServer = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            IPEndPoint ip = new IPEndPoint(IPAddress.Parse(Packet.GetIp4Address()), portTCP);
+            listenerSocketServer.Bind(ip);
+            Thread listenThread = new Thread(ListenThreadServer);
+            listenThread.Start();
+            Thread.Sleep(5000);
+            if (iAmTheBoot)
+            {
+                StartBoot();
+            }
+            else
+            {
+                listenThread.Abort();
+                Console.WriteLine("Me he unido a la red de fucking servers"); 
+            }
+        }
+
+        private static void StartBoot()
+        {
+            GUID = 0;
+
+        }
 
         private static void ListenThread()
         {
@@ -95,6 +128,12 @@ namespace WebScraper.Server
                 clientListener.Listen(0);
                 connectedClients.Add(new ClientData(clientListener.Accept()));
             }
+        }
+        private static void ListenThreadServer()
+        {
+            listenerSocketServer.Listen(0);
+            iAmTheBoot = false;
+            listenerSocketServer.Accept();
         }
 
         class ClientData
