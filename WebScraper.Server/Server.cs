@@ -25,6 +25,7 @@ namespace WebScraper.Server
         static int MAXservers = 100;
         static int myID;
         static Tuple<Socket, string, int>[] serversList = new Tuple<Socket, string, int>[MAXservers];
+        static int currentTasks = 0;
 
         static void Main(string[] args)
         {
@@ -32,7 +33,7 @@ namespace WebScraper.Server
 
             Thread serverListenerT = new Thread(listenUdp);
             serverListenerT.Start();
-            Console.WriteLine("Comenzando servidor en " + Packet.GetIp4Address() + ":" + clientsPort.ToString());
+            Console.WriteLine("Comenzando servidor en " + Packet.GetIp4Address() + ":" + clientsPort.ToString() + "Con ID: " + "{0}",myID.ToString());
 
             clientListener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             connectedClients = new List<ClientData>();
@@ -68,10 +69,8 @@ namespace WebScraper.Server
                     {
                         t.Abort();
                     }
-                    
                 }
             }
-
         }
 
         private static void connectToNewServer(object cIP)
@@ -143,27 +142,18 @@ namespace WebScraper.Server
             listenerSocketServer = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             IPEndPoint ip = new IPEndPoint(IPAddress.Parse(Packet.GetIp4Address()), portTCP);
             listenerSocketServer.Bind(ip);
-            Thread listenThread = new Thread(ListenThreadServer);
-            listenThread.Start();
+            Thread listenThreadServer = new Thread(ListenThreadServer);
+            listenThreadServer.Start();
             Thread.Sleep(2000);
             if (iAmTheBoot)
             {
-                Console.WriteLine("Yo creo bitch");
-
-                myID = 0;
-
-                for(int i = 0; i < MAXservers; ++i)
+                listenThreadServer.Abort();
+                for (int i = 0; i < MAXServers; ++i)
                 {
                     serversList[i] = null;
                 }
-
-                serversList[0] = new Tuple<Socket, string, int>(null, Packet.GetIp4Address(), 0);
-                
-            }
-            else
-            {
-                listenThread.Abort();
-                Console.WriteLine("Me he unido a la red de fucking servers"); 
+                myID = 0;
+                serversList[0] = new Tuple<Socket, string, int>(null, Packet.GetIp4Address(), currentTasks);
             }
         }
 
@@ -178,9 +168,37 @@ namespace WebScraper.Server
         private static void ListenThreadServer()
         {
             listenerSocketServer.Listen(0);
-            
-            listenerSocketServer.Accept();
+            Socket receiver = listenerSocketServer.Accept();
+
             iAmTheBoot = false;
+
+            byte[] buffer = new byte[receiver.ReceiveBufferSize];
+            int bifferSize = receiver.Receive(buffer);
+            receiver.Close();
+            Packet p = new Packet(buffer);
+            myID = int.Parse(p.packetData[0]);
+
+            for(int i = 0; i < MAXServers; ++i)
+            {
+                if (p.serversList[i] == null)
+                {
+                    serversList[i] = null;
+                }
+                else
+                { 
+                    serversList[i] = new Tuple<Socket, string, int>(new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp),
+                                                                    p.serversList[i].Item1, 
+                                                                    p.serversList[i].Item2);
+
+                    IPEndPoint ipE = new IPEndPoint(IPAddress.Parse(p.serversList[i].Item1), 8000);
+                    serversList[i].Item1.Connect(ipE);
+                    Packet pSend = new Packet(PacketType.ServerJoined, myID.ToString());
+                    pSend.packetData.Add(Packet.GetIp4Address());
+                    pSend.packetData.Add(0.ToString());
+                    serversList[i].Item1.Send(pSend.ToBytes());
+                }
+            }
+            Console.WriteLine("Me he unido a la Red de Servidores con ID: {0}", myID);
         }
 
         class ClientData
