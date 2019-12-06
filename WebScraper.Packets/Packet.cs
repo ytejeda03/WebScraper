@@ -23,6 +23,7 @@ namespace WebScraper.Packets
             this.packetData = new List<string>();
             this.senderID = senderID;
             this.packetType = packetType;
+
         }
             
         public Packet(PacketType packetType, string senderID, List<string> packetData)

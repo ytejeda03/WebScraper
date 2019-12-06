@@ -21,9 +21,10 @@ namespace WebScraper.Server
         static bool iAmTheBoot = true;
         static int portUDP = 8001;
         static int portTCP = 8002;
+        static int clientsPort = 8000;
+        static int MAXservers = 100;
         static int myID;
-        static int MAXServers = 100;
-        static Tuple<Socket, string, int>[] serversList = new Tuple<Socket, string, int>[MAXServers];
+        static Tuple<Socket, string, int>[] serversList = new Tuple<Socket, string, int>[MAXservers];
         static int currentTasks = 0;
 
         static void Main(string[] args)
@@ -32,12 +33,12 @@ namespace WebScraper.Server
 
             Thread serverListenerT = new Thread(listenUdp);
             serverListenerT.Start();
-            Console.WriteLine("Comenzando servidor en " + Packet.GetIp4Address() + ":8000" + "Con ID: " + "{0}",myID.ToString());
+            Console.WriteLine("Comenzando servidor en " + Packet.GetIp4Address() + ":" + clientsPort.ToString() + "Con ID: " + "{0}",myID.ToString());
 
             clientListener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             connectedClients = new List<ClientData>();
 
-            IPEndPoint ip = new IPEndPoint(IPAddress.Parse(Packet.GetIp4Address()), 8000);
+            IPEndPoint ip = new IPEndPoint(IPAddress.Parse(Packet.GetIp4Address()), clientsPort);
 
             clientListener.Bind(ip);
 
@@ -50,7 +51,7 @@ namespace WebScraper.Server
         private static void listenUdp()
         {
             UdpClient serverListener = new UdpClient();
-            serverListener.Client.Bind(new IPEndPoint(IPAddress.Any, 8001));
+            serverListener.Client.Bind(new IPEndPoint(IPAddress.Any, portUDP));
 
             var from = new IPEndPoint(0, 0);
             while (true)
@@ -77,16 +78,52 @@ namespace WebScraper.Server
             string ip = (string)cIP;
 
             Socket newServerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint ipE = new IPEndPoint(IPAddress.Parse(ip), 8002);
+            IPEndPoint ipE = new IPEndPoint(IPAddress.Parse(ip), portTCP);
 
             try
             {
                 newServerSocket.Connect(ipE);
                 clientConnected = true;
-                Console.WriteLine(ip + " se ha unido a la red de servidores");
-                // meterlo en el chord
+
+                int id = -1;
+
+                for(int i = 0; i < MAXservers; ++i)
+                {
+                    if(serversList[i] == null)
+                    {
+                        id = i;
+                        break;
+                    }
+                }
+
+                if(id == -1)
+                {
+                    Console.WriteLine(ip + " no se ha podido unir a la red de servidores porque ya se ha alcanzado el maximo de servidores");
+                }
+                else
+                {
+                    string myid = myID.ToString();
+                    Packet p = new Packet(PacketType.JoinResponse, myid);
+                    for(int i = 0; i < MAXservers; ++i)
+                    {
+                        if(serversList[i] == null)
+                        {
+                            p.serversList[i] = null;
+                        }
+                        else
+                        {
+                            p.serversList[i] = new Tuple<string, int>(serversList[i].Item2, serversList[i].Item3);
+                        }
+                    }
+
+                    p.packetData.Add(id.ToString());
+                    byte[] buffer = p.ToBytes();
+                    newServerSocket.Send(buffer);
+
+                    newServerSocket.Close();
+                }
             }
-            catch
+            catch(Exception ex)
             {
                 Console.WriteLine("No se ha podido agregar a " + ip + " a la red de servidores");
             }
@@ -101,6 +138,7 @@ namespace WebScraper.Server
             Packet p = new Packet(PacketType.Join, String.Empty, data);
             udpClient.Send(p.ToBytes(), p.ToBytes().Length, "255.255.255.255", portUDP);
             udpClient.Close();
+
             listenerSocketServer = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             IPEndPoint ip = new IPEndPoint(IPAddress.Parse(Packet.GetIp4Address()), portTCP);
             listenerSocketServer.Bind(ip);
@@ -117,7 +155,6 @@ namespace WebScraper.Server
                 myID = 0;
                 serversList[0] = new Tuple<Socket, string, int>(null, Packet.GetIp4Address(), currentTasks);
             }
-
         }
 
         private static void ListenThread()
@@ -176,7 +213,6 @@ namespace WebScraper.Server
                 id = Guid.NewGuid().ToString();
                 clientThread = new Thread(Server.ClientDataIN);
                 clientThread.Start(new Tuple<Socket, string>(clientSocket, id));
-                
             }     
         }
 
@@ -202,7 +238,6 @@ namespace WebScraper.Server
                     if (readBytes > 0)
                     {
                         Packet requestPacket = new Packet(buffer);
-                        requestPacket.senderID = clientID;
                         requestPacket.packetData.Add(counter.ToString());
                         if(requestPacket.packetType == PacketType.Request)
                         {
@@ -210,6 +245,14 @@ namespace WebScraper.Server
                             Thread downloadThread = new Thread(Server.HandleRequest);
                             downloadThread.Start(argument);
                             counter = (counter + 1) % 1000000;
+                        }
+                        else
+                        {
+                            if(requestPacket.packetType == PacketType.ServerJoined)
+                            {
+                                serversList[int.Parse(requestPacket.senderID)] = new Tuple<Socket, string, int>(clientSocket, requestPacket.packetData[0], int.Parse(requestPacket.packetData[1]));
+                                Console.WriteLine(requestPacket.packetData[0] + " se ha unido a la red de servidores");
+                            }
                         }
                     }
                 }
