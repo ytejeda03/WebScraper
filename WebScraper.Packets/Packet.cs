@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-=======
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -79,6 +78,8 @@ namespace WebScraper.Packets
     {
         Request,
         Response,
-        Error
+        Error,
+        Join,
+        JoinResponse
     }
 }
