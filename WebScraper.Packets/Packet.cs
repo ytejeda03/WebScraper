@@ -16,6 +16,7 @@ namespace WebScraper.Packets
         public List<string> packetData;
         public string senderID;
         public PacketType packetType;
+        public Tuple<string, int>[] serversList = new Tuple<string, int>[100];
 
         public Packet(PacketType packetType, string senderID)
         {
@@ -42,7 +43,7 @@ namespace WebScraper.Packets
             this.packetData = p.packetData;
             this.senderID = p.senderID;
             this.packetType = p.packetType;
-
+            this.serversList = p.serversList;
         }
 
         public byte[] ToBytes()
@@ -80,6 +81,7 @@ namespace WebScraper.Packets
         Response,
         Error,
         Join,
-        JoinResponse
+        JoinResponse,
+        ServerJoined
     }
 }
