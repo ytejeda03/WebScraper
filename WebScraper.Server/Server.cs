@@ -32,7 +32,7 @@ namespace WebScraper.Server
 
             Thread serverListenerT = new Thread(listenUdp);
             serverListenerT.Start();
-            Console.WriteLine("Comenzando servidor en " + Packet.GetIp4Address() + ":8000" + "Con ID: " + myID.ToString());
+            Console.WriteLine("Comenzando servidor en " + Packet.GetIp4Address() + ":8000" + "Con ID: " + "{0}",myID.ToString());
 
             clientListener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             connectedClients = new List<ClientData>();
