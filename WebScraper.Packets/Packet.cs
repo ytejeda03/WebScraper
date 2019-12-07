@@ -83,6 +83,7 @@ namespace WebScraper.Packets
         Error,
         Join,
         JoinResponse,
-        ServerJoined
+        ServerJoined,
+        ServerDisconnected
     }
 }

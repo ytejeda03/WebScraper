@@ -22,9 +22,9 @@ namespace WebScraper.Server
         static int portUDP = 8001;
         static int portTCP = 8002;
         static int clientsPort = 8000;
-        static int MAXservers = 100;
+        static int MAXServers = 100;
         static int myID;
-        static Tuple<Socket, string, int>[] serversList = new Tuple<Socket, string, int>[MAXservers];
+        static Tuple<Socket, string, int>[] serversList = new Tuple<Socket, string, int>[MAXServers];
         static int currentTasks = 0;
 
         static void Main(string[] args)
@@ -33,6 +33,7 @@ namespace WebScraper.Server
 
             Thread serverListenerT = new Thread(listenUdp);
             serverListenerT.Start();
+
             Console.WriteLine("Comenzando servidor en " + Packet.GetIp4Address() + ":" + clientsPort.ToString() + "Con ID: " + "{0}",myID.ToString());
 
             clientListener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
@@ -67,7 +68,7 @@ namespace WebScraper.Server
                     Thread.Sleep(1000);
                     if (!clientConnected)
                     {
-                        t.Abort();
+                        t.Suspend();
                     }
                 }
             }
@@ -87,7 +88,7 @@ namespace WebScraper.Server
 
                 int id = -1;
 
-                for(int i = 0; i < MAXservers; ++i)
+                for(int i = 0; i < MAXServers; ++i)
                 {
                     if(serversList[i] == null)
                     {
@@ -104,7 +105,7 @@ namespace WebScraper.Server
                 {
                     string myid = myID.ToString();
                     Packet p = new Packet(PacketType.JoinResponse, myid);
-                    for(int i = 0; i < MAXservers; ++i)
+                    for(int i = 0; i < MAXServers; ++i)
                     {
                         if(serversList[i] == null)
                         {
@@ -144,16 +145,17 @@ namespace WebScraper.Server
             listenerSocketServer.Bind(ip);
             Thread listenThreadServer = new Thread(ListenThreadServer);
             listenThreadServer.Start();
-            Thread.Sleep(2000);
+            Thread.Sleep(4000);
             if (iAmTheBoot)
             {
-                listenThreadServer.Abort();
+                listenThreadServer.Suspend();
                 for (int i = 0; i < MAXServers; ++i)
                 {
                     serversList[i] = null;
                 }
                 myID = 0;
                 serversList[0] = new Tuple<Socket, string, int>(null, Packet.GetIp4Address(), currentTasks);
+                
             }
         }
 
@@ -167,38 +169,42 @@ namespace WebScraper.Server
         }
         private static void ListenThreadServer()
         {
-            listenerSocketServer.Listen(0);
-            Socket receiver = listenerSocketServer.Accept();
+                listenerSocketServer.Listen(0);
+                Socket receiver = listenerSocketServer.Accept();
 
-            iAmTheBoot = false;
+                iAmTheBoot = false;
 
-            byte[] buffer = new byte[receiver.ReceiveBufferSize];
-            int bifferSize = receiver.Receive(buffer);
-            receiver.Close();
-            Packet p = new Packet(buffer);
-            myID = int.Parse(p.packetData[0]);
-
-            for(int i = 0; i < MAXServers; ++i)
-            {
-                if (p.serversList[i] == null)
+                byte[] buffer = new byte[receiver.ReceiveBufferSize];
+                int bifferSize = receiver.Receive(buffer);
+                receiver.Close();
+                Packet p = new Packet(buffer);
+                myID = int.Parse(p.packetData[0]);
+                serversList[myID] = new Tuple<Socket, string, int>(null, Packet.GetIp4Address(), 0);
+                for (int i = 0; i < MAXServers; ++i)
                 {
-                    serversList[i] = null;
-                }
-                else
-                { 
-                    serversList[i] = new Tuple<Socket, string, int>(new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp),
-                                                                    p.serversList[i].Item1, 
-                                                                    p.serversList[i].Item2);
+                    if (i == myID)
+                        continue;
+                    if (p.serversList[i] == null)
+                    {
+                        serversList[i] = null;
+                    }
+                    else
+                    {
+                        serversList[i] = new Tuple<Socket, string, int>(new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp),
+                                                                        p.serversList[i].Item1,
+                                                                        p.serversList[i].Item2);
 
-                    IPEndPoint ipE = new IPEndPoint(IPAddress.Parse(p.serversList[i].Item1), 8000);
-                    serversList[i].Item1.Connect(ipE);
-                    Packet pSend = new Packet(PacketType.ServerJoined, myID.ToString());
-                    pSend.packetData.Add(Packet.GetIp4Address());
-                    pSend.packetData.Add(0.ToString());
-                    serversList[i].Item1.Send(pSend.ToBytes());
+                        IPEndPoint ipE = new IPEndPoint(IPAddress.Parse(p.serversList[i].Item1), 8000);
+                        serversList[i].Item1.Connect(ipE);
+                        Packet pSend = new Packet(PacketType.ServerJoined, myID.ToString());
+                        pSend.packetData.Add(Packet.GetIp4Address());
+                        pSend.packetData.Add(0.ToString());
+                        serversList[i].Item1.Send(pSend.ToBytes());
+                    }
                 }
-            }
-            Console.WriteLine("Me he unido a la Red de Servidores con ID: {0}", myID);
+                Console.WriteLine("Me he unido a la Red de Servidores con ID: {0}", myID);
+            
+            
         }
 
         class ClientData
@@ -206,20 +212,32 @@ namespace WebScraper.Server
             public Socket clientSocket;
             public Thread clientThread;
             public string id;
+            public bool isServer;
 
             public ClientData(Socket clientSocket)
             {
+                this.isServer = false;
                 this.clientSocket = clientSocket;
                 id = Guid.NewGuid().ToString();
                 clientThread = new Thread(Server.ClientDataIN);
-                clientThread.Start(new Tuple<Socket, string>(clientSocket, id));
-            }     
+                clientThread.Start(this);
+            }
+            public ClientData(Socket clientSocket, int id, bool isServer)
+            {
+                this.clientSocket = clientSocket;
+                this.id = id.ToString();
+                this.isServer = isServer;
+                clientThread = new Thread(Server.ClientDataIN);
+                clientThread.Start(this);
+                
+            }
         }
 
         private static void ClientDataIN(object arguments)
         {
-            Socket clientSocket = ((Tuple<Socket, string>)arguments).Item1;
-            string clientID = ((Tuple<Socket, string>)arguments).Item2;
+            Socket clientSocket = ((ClientData)arguments).clientSocket;
+            string clientID = ((ClientData)arguments).id;
+            bool isServer = ((ClientData)arguments).isServer;
 
             byte[] buffer;
 
@@ -253,12 +271,32 @@ namespace WebScraper.Server
                                 serversList[int.Parse(requestPacket.senderID)] = new Tuple<Socket, string, int>(clientSocket, requestPacket.packetData[0], int.Parse(requestPacket.packetData[1]));
                                 Console.WriteLine(requestPacket.packetData[0] + " se ha unido a la red de servidores");
                             }
+                            else
+                            {
+                                if(requestPacket.packetType == PacketType.ServerDisconnected)
+                                {
+                                    int index = int.Parse(requestPacket.senderID);
+                                    serversList[index] = null;
+                                }
+                            }
                         }
                     }
                 }
                 catch (SocketException ex)
                 {
-                    Console.WriteLine("Perdida de conexion con el cliente " + clientID);
+                    Console.WriteLine("Perdida de conexion con " + clientID);
+                    if (isServer)
+                    {
+                        int index = int.Parse(clientID);
+                        serversList[index] = null;
+                        for(int i = 0; i < MAXServers; ++i)
+                        {
+                            if (i == myID || serversList[i] == null)
+                                continue;
+                            Packet p = new Packet(PacketType.ServerDisconnected, index.ToString());
+                            serversList[i].Item1.Send(p.ToBytes());
+                        }
+                    }
                     break;
                 }
             }
