@@ -15,6 +15,7 @@ namespace WebScraper.Server
     class Server
     {
         static Socket clientListener;
+        static List<ClientData> connectedServers;
         static List<ClientData> connectedClients;
         static bool clientConnected = false;
         static Socket listenerSocketServer;
@@ -65,10 +66,15 @@ namespace WebScraper.Server
                     Thread.Sleep(1000);
                     Thread t = new Thread(connectToNewServer);
                     t.Start(p.packetData[0]);
-                    Thread.Sleep(1000);
+                    Thread.Sleep(2000);
                     if (!clientConnected)
                     {
-                        t.Suspend();
+                        try
+                        {
+                            t.Suspend();
+                        }
+                        catch { }
+                        
                     }
                 }
             }
@@ -200,6 +206,7 @@ namespace WebScraper.Server
                         pSend.packetData.Add(Packet.GetIp4Address());
                         pSend.packetData.Add(0.ToString());
                         serversList[i].Item1.Send(pSend.ToBytes());
+                        connectedServers.Add(new ClientData(serversList[i].Item1, i, true));
                     }
                 }
                 Console.WriteLine("Me he unido a la Red de Servidores con ID: {0}", myID);
