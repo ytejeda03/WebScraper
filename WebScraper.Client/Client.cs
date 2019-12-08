@@ -16,8 +16,11 @@ namespace WebScraper.Client
         public static Socket masterSocket;
         public static string url;
         public static string ip;
+        private static Dictionary<string, bool> taskCompletion;
         static void Main(string[] args)
         {
+            taskCompletion = new Dictionary<string, bool>();
+
             Init: Console.Clear();
             Console.WriteLine("Introduzca la dirección ip del servidor");
             ip = Console.ReadLine();
@@ -36,10 +39,11 @@ namespace WebScraper.Client
             }
             URL: Console.WriteLine("Introduzca la dirección url del sitio web que desea descargar");
             url = Console.ReadLine();
+            taskCompletion[url] = false;
             Console.WriteLine("Introduzca el nombre que desea que tenga el archivo");
             var name = Console.ReadLine();
             var data = new List<string> { url};
-            Packet p = new Packet(PacketType.Request, String.Empty, data);
+            Packet p = new Packet(PacketType.Request, Packet.GetIp4Address(), data);
             Thread t = new Thread(DataIN);
             masterSocket.Send(p.ToBytes());
             t.Start(name);
@@ -83,10 +87,14 @@ namespace WebScraper.Client
                     break;
 
                 case PacketType.Response:
-                    File.WriteAllText(name, p.packetData[0]);
-                    Console.WriteLine("Descarga finalizada");
+                    if (!taskCompletion[p.senderID])
+                    {
+                        File.WriteAllText(name, p.packetData[0]);
+                        Console.WriteLine("Descarga finalizada");
+                    }
                     break;
             }
+            taskCompletion[p.senderID] = true;
         }
     }
 }
