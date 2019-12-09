@@ -205,6 +205,7 @@ namespace WebScraper.Server
                         Packet pSend = new Packet(PacketType.ServerJoined, myID.ToString());
                         pSend.packetData.Add(Packet.GetIp4Address());
                         pSend.packetData.Add(0.ToString());
+                        pSend.packetData.Add(myID.ToString());
                         serversList[i].Item1.Send(pSend.ToBytes());
                         connectedServers.Add(new ClientData(serversList[i].Item1, i, true));
                     }
@@ -287,6 +288,8 @@ namespace WebScraper.Server
                         {
                             if(requestPacket.packetType == PacketType.ServerJoined)
                             {
+                                isServer = true;
+                                clientID = requestPacket.packetData[2];
                                 serversList[int.Parse(requestPacket.senderID)] = new Tuple<Socket, string, int>(clientSocket, requestPacket.packetData[0], int.Parse(requestPacket.packetData[1]));
                                 Console.WriteLine(requestPacket.packetData[0] + " se ha unido a la red de servidores");
                             }
@@ -301,6 +304,7 @@ namespace WebScraper.Server
                                 {
                                     if (requestPacket.packetType == PacketType.Request)
                                     {
+                                        findCandidates:
                                         int ca = 1000000, cb = 1000000, cc = 1000000;
                                         int a = -1, b = -1, c = -1;
                                         for(int i = 0; i < MAXServers; ++i)
@@ -311,9 +315,9 @@ namespace WebScraper.Server
                                                 {
                                                     c = b;
                                                     b = a;
+                                                    a = i;
                                                     cc = cb;
                                                     cb = ca;
-                                                    a = i;
                                                     ca = serversList[i].Item3;
                                                 }
                                                 else
@@ -334,21 +338,61 @@ namespace WebScraper.Server
                                             }
                                         }
 
-                                        bool iHaveToDownload = (a == myID || b == myID);
+                                        bool iHaveToDownload = (a == myID || b == myID || c == myID);
+                                        bool someWhereDisconnected = false;
 
                                         if(a != -1 && a != myID)
                                         {
                                             Packet p = new Packet(requestPacket.ToBytes());
                                             p.packetType = PacketType.Download;
-                                            serversList[a].Item1.Send(p.ToBytes());
+                                            try
+                                            {
+                                                serversList[a].Item1.Send(p.ToBytes());
+                                            }
+                                            catch
+                                            {
+                                                serversList[a] = null;
+                                                someWhereDisconnected = true;
+                                            }
+                                            
                                         }
 
                                         if(b != -1 && b != myID)
                                         {
                                             Packet p = new Packet(requestPacket.ToBytes());
                                             p.packetType = PacketType.Download;
-                                            serversList[b].Item1.Send(p.ToBytes());
+                                            try
+                                            {
+                                                serversList[b].Item1.Send(p.ToBytes());
+                                            }
+                                            catch
+                                            {
+                                                serversList[b] = null;
+                                                someWhereDisconnected = true;
+                                            }
                                         }
+
+                                        if (c != -1 && c != myID)
+                                        {
+                                            Packet p = new Packet(requestPacket.ToBytes());
+                                            p.packetType = PacketType.Download;
+                                            try
+                                            {
+                                                serversList[c].Item1.Send(p.ToBytes());
+                                            }
+                                            catch
+                                            {
+                                                serversList[c] = null;
+                                                someWhereDisconnected = true;
+                                            }
+                                        }
+
+                                        if (someWhereDisconnected)
+                                        {
+                                            goto findCandidates;
+                                        }
+
+                                        Console.WriteLine(a + " " + b + " " + c);
 
                                         if (iHaveToDownload)
                                         {
@@ -360,7 +404,14 @@ namespace WebScraper.Server
                                                 {
                                                     Packet p = new Packet(PacketType.TaskStatus, myID.ToString());
                                                     p.packetData.Add(currentTasks.ToString());
-                                                    serversList[i].Item1.Send(p.ToBytes());
+                                                    try
+                                                    {
+                                                        serversList[i].Item1.Send(p.ToBytes());
+                                                    }
+                                                    catch
+                                                    {
+                                                        serversList[i] = null;
+                                                    }
                                                 }
                                             }
 
@@ -388,9 +439,9 @@ namespace WebScraper.Server
                 }
                 catch (SocketException ex)
                 {
-                    Console.WriteLine("Perdida de conexion con " + clientID);
                     if (isServer)
                     {
+                        Console.WriteLine("Perdida de conexion con el servidor " + clientID);
                         int index = int.Parse(clientID);
                         serversList[index] = null;
                         for(int i = 0; i < MAXServers; ++i)
@@ -401,6 +452,10 @@ namespace WebScraper.Server
                             serversList[i].Item1.Send(p.ToBytes());
                         }
                     }
+                    else
+                    {
+                        Console.WriteLine("Perdida de conexion con el cliente " + clientID);
+                    }
                     break;
                 }
             }
@@ -409,7 +464,9 @@ namespace WebScraper.Server
         private static void HandleRequest(object argument)
         {
             Packet requestPacket = ((Tuple<Packet, Socket>)argument).Item1;
-            Socket clientSocket = ((Tuple<Packet, Socket>)argument).Item2;
+            Socket clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            IPEndPoint ipE = new IPEndPoint(IPAddress.Parse(requestPacket.senderID), 8010);
+
             string url = requestPacket.packetData[0];
             string clientID = requestPacket.senderID;
 
@@ -423,10 +480,14 @@ namespace WebScraper.Server
                 Console.WriteLine(clientID + ": Descargado " + url);
                 Packet download = new Packet(PacketType.Response, url);
                 download.packetData.Add(File.ReadAllText(clientID + requestPacket.packetData[1]));
+                download.packetData.Add(requestPacket.packetData[1]);
                 try
                 {
+                    clientSocket.Connect(ipE);
                     clientSocket.Send(download.ToBytes());
                     Console.WriteLine(url + " enviado a " + clientID);
+                    Thread.Sleep(3000);
+                    clientSocket.Close();
                 }
                 catch
                 {
@@ -437,7 +498,12 @@ namespace WebScraper.Server
             {
                 Console.WriteLine(clientID + ": Error descargando " + url);
                 Packet p = new Packet(PacketType.Error, url);
-                clientSocket.Send(p.ToBytes());
+                try
+                {
+                    clientSocket.Connect(ipE);
+                    clientSocket.Send(p.ToBytes());
+                }
+                catch { }        
             }
 
             currentTasks -= 1;
