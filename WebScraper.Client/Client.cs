@@ -84,6 +84,7 @@ namespace WebScraper.Client
                 {
                     buffer = new byte[senderServer.SendBufferSize + 1024];
                     readBytes = senderServer.Receive(buffer);
+
                     lock (o)
                     {
                         if (readBytes > 0)
