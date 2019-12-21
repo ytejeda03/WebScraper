@@ -22,13 +22,6 @@ namespace WebScraper.Client
         private static Dictionary<string, bool> taskCompletion;
         static void Main(string[] args)
         {
-            serverListener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint ipServer = new IPEndPoint(IPAddress.Parse(Packet.GetIp4Address()), 8010);
-            serverListener.Bind(ipServer);
-
-            Thread serverL = new Thread(ListenThread);
-            serverL.Start();
-
             taskCompletion = new Dictionary<string, bool>();
 
             Init: Console.Clear();
@@ -47,6 +40,7 @@ namespace WebScraper.Client
                 Thread.Sleep(1000);
                 goto Init;
             }
+
             URL: Console.WriteLine("Introduzca la dirección url del sitio web que desea descargar");
             url = Console.ReadLine();
             taskCompletion[url] = false;
@@ -56,24 +50,42 @@ namespace WebScraper.Client
             Packet p = new Packet(PacketType.Request, Packet.GetIp4Address(), data);
             p.packetData.Add(name);
             masterSocket.Send(p.ToBytes());
+
+
+            p.packetType = PacketType.Download;
+
+            byte[] buffer = new byte[masterSocket.SendBufferSize];
+            int readBytes = masterSocket.Receive(buffer);
+            Packet servP = new Packet(buffer);
+
+            for (int i = 0; i < servP.packetData.Count; ++i)
+            {
+                Console.WriteLine(servP.packetData[i]);
+                Socket s = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                IPEndPoint ipD = new IPEndPoint(IPAddress.Parse(servP.packetData[i]), 10001);
+                try
+                {
+                    s.Connect(ipD);
+                    Console.WriteLine("Conectado al servidor de descarga " + i);
+                    s.Send(p.ToBytes());
+                    Thread t = new Thread(Download);
+                    t.Start(new Tuple<Socket, int>(s, i));
+                }
+                catch
+                {
+                    Console.WriteLine("No se pudo establecer conexión con el servidor de descarga # " + i);
+                }
+            }
+
             Thread.Sleep(1000);
             goto URL;
         }
 
-        public static void ListenThread()
-        {
-            while (true)
-            {
-                serverListener.Listen(0);
-                Socket s = serverListener.Accept();
-                Thread t = new Thread(Download);
-                t.Start(s);
-            }
-        }
-
         static void Download(object sender)
         {
-            Socket senderServer = (Socket)sender;
+            Tuple<Socket, int> aux = (Tuple<Socket, int>)sender;
+            Socket senderServer = aux.Item1;
+            int id = aux.Item2;
 
             byte[] buffer;
             int readBytes;
@@ -92,6 +104,7 @@ namespace WebScraper.Client
                             Packet p = new Packet(buffer);
                             if (taskCompletion[p.senderID])
                                 break;
+
                             switch (p.packetType)
                             {
                                 case PacketType.Error:
@@ -113,57 +126,11 @@ namespace WebScraper.Client
                 }
                 catch (SocketException ex)
                 {
-                    Console.WriteLine("Uno de los servidores de descarga se ha desconectado");
+                    Console.WriteLine("El servidor de descarga " + id + " se ha desconectado");
                     break;
                 }
             }
 
-        }
-
-        static void DataIN(object name)
-        {
-            byte[] buffer;
-            int readBytes;
-
-            while (true)
-            {
-                try
-                {
-                    buffer = new byte[masterSocket.SendBufferSize];
-                    readBytes = masterSocket.Receive(buffer);
-
-                    if (readBytes > 0)
-                    {
-                        DataManager(new Packet(buffer), (string)name);
-                        break;
-                    }
-                }
-                catch (SocketException ex)
-                {
-                    Console.WriteLine("El servidor se ha desconectado");
-                    Console.ReadLine();
-                    Environment.Exit(0);
-                }
-            }
-        }
-
-        static void DataManager(Packet p, string name)
-        {
-            switch (p.packetType)
-            {
-                case PacketType.Error:
-                    Console.WriteLine("No se pudo completar su descarga, inténtelo de nuevo");
-                    break;
-
-                case PacketType.Response:
-                    if (!taskCompletion[p.senderID])
-                    {
-                        File.WriteAllText(name, p.packetData[0]);
-                        Console.WriteLine("Descarga finalizada");
-                    }
-                    break;
-            }
-            taskCompletion[p.senderID] = true;
         }
     }
 }
