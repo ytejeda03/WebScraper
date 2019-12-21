@@ -14,6 +14,7 @@ namespace WebScraper.Server
 {
     class Server
     {
+        static Socket taskListener;
         static Socket clientListener;
         static List<ClientData> connectedServers = new List<ClientData>();
         static List<ClientData> connectedClients;
@@ -23,6 +24,7 @@ namespace WebScraper.Server
         static int portUDP = 8001;
         static int portTCP = 8002;
         static int clientsPort = 8000;
+        static int taskPort = 10001;
         static int MAXServers = 100;
         static int myID;
         static Tuple<Socket, string, int>[] serversList = new Tuple<Socket, string, int>[MAXServers];
@@ -36,6 +38,13 @@ namespace WebScraper.Server
             serverListenerT.Start();
 
             Console.WriteLine("Comenzando servidor en " + Packet.GetIp4Address() + ":" + clientsPort.ToString() + "Con ID: " + "{0}",myID.ToString());
+
+            taskListener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            IPEndPoint ipT = new IPEndPoint(IPAddress.Parse(Packet.GetIp4Address()), taskPort);
+            taskListener.Bind(ipT);
+
+            Thread newT = new Thread(ListenTask);
+            newT.Start();
 
             clientListener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             connectedClients = new List<ClientData>();
@@ -173,6 +182,15 @@ namespace WebScraper.Server
                 connectedClients.Add(new ClientData(clientListener.Accept()));
             }
         }
+
+        private static void ListenTask()
+        {
+            while (true)
+            {
+                taskListener.Listen(0);
+                connectedClients.Add(new ClientData(taskListener.Accept()));
+            }
+        }
         private static void ListenThreadServer()
         {
                 listenerSocketServer.Listen(0);
@@ -307,6 +325,8 @@ namespace WebScraper.Server
                                         findCandidates:
                                         int ca = 1000000, cb = 1000000, cc = 1000000;
                                         int a = -1, b = -1, c = -1;
+                                        string ai = "", bi = "", ci = "";
+
                                         for(int i = 0; i < MAXServers; ++i)
                                         {
                                             if(serversList[i] != null)
@@ -344,10 +364,11 @@ namespace WebScraper.Server
                                         if(a != -1 && a != myID)
                                         {
                                             Packet p = new Packet(requestPacket.ToBytes());
-                                            p.packetType = PacketType.Download;
+                                            p.packetType = PacketType.ConnectionTest;
                                             try
                                             {
                                                 serversList[a].Item1.Send(p.ToBytes());
+                                                ai = serversList[a].Item2;
                                             }
                                             catch
                                             {
@@ -360,10 +381,11 @@ namespace WebScraper.Server
                                         if(b != -1 && b != myID)
                                         {
                                             Packet p = new Packet(requestPacket.ToBytes());
-                                            p.packetType = PacketType.Download;
+                                            p.packetType = PacketType.ConnectionTest;
                                             try
                                             {
                                                 serversList[b].Item1.Send(p.ToBytes());
+                                                bi = serversList[b].Item2;
                                             }
                                             catch
                                             {
@@ -375,10 +397,11 @@ namespace WebScraper.Server
                                         if (c != -1 && c != myID)
                                         {
                                             Packet p = new Packet(requestPacket.ToBytes());
-                                            p.packetType = PacketType.Download;
+                                            p.packetType = PacketType.ConnectionTest;
                                             try
                                             {
                                                 serversList[c].Item1.Send(p.ToBytes());
+                                                ci = serversList[c].Item2;
                                             }
                                             catch
                                             {
@@ -394,33 +417,28 @@ namespace WebScraper.Server
 
                                         Console.WriteLine(a + " " + b + " " + c);
 
-                                        if (iHaveToDownload)
+                                        if(a == myID)
                                         {
-                                            currentTasks += 1;
-                                            serversList[myID] = new Tuple<Socket, string, int>(null, Packet.GetIp4Address(), currentTasks);
-                                            for (int i = 0; i < MAXServers; ++i)
-                                            {
-                                                if (serversList[i] != null && i != myID)
-                                                {
-                                                    Packet p = new Packet(PacketType.TaskStatus, myID.ToString());
-                                                    p.packetData.Add(currentTasks.ToString());
-                                                    try
-                                                    {
-                                                        serversList[i].Item1.Send(p.ToBytes());
-                                                    }
-                                                    catch
-                                                    {
-                                                        serversList[i] = null;
-                                                    }
-                                                }
-                                            }
-
-                                            Tuple<Packet, Socket> argument = new Tuple<Packet, Socket>(requestPacket, clientSocket);
-                                            Thread downloadThread = new Thread(Server.HandleRequest);
-                                            downloadThread.Start(argument);
-                                            counter = (counter + 1) % 1000000;
+                                            ai = Packet.GetIp4Address();
+                                        }
+                                        if(b == myID)
+                                        {
+                                            bi = Packet.GetIp4Address();
+                                        }
+                                        if(c == myID)
+                                        {
+                                            ci = Packet.GetIp4Address();
                                         }
 
+                                        Packet oa = new Packet(PacketType.IpSending, myID.ToString());
+                                        if (ai != "")
+                                            oa.packetData.Add(ai);
+                                        if (bi != "")
+                                            oa.packetData.Add(bi);
+                                        if (ci != "")
+                                            oa.packetData.Add(ci);
+
+                                        clientSocket.Send(oa.ToBytes());
 
                                     }
                                     else
@@ -464,8 +482,7 @@ namespace WebScraper.Server
         private static void HandleRequest(object argument)
         {
             Packet requestPacket = ((Tuple<Packet, Socket>)argument).Item1;
-            Socket clientSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            IPEndPoint ipE = new IPEndPoint(IPAddress.Parse(requestPacket.senderID), 8010);
+            Socket clientSocket = ((Tuple<Packet, Socket>)argument).Item2;
 
             string url = requestPacket.packetData[0];
             string clientID = requestPacket.senderID;
@@ -483,7 +500,6 @@ namespace WebScraper.Server
                 download.packetData.Add(requestPacket.packetData[1]);
                 try
                 {
-                    clientSocket.Connect(ipE);
                     clientSocket.Send(download.ToBytes());
                     Console.WriteLine(url + " enviado a " + clientID);
                     Thread.Sleep(3000);
@@ -500,7 +516,6 @@ namespace WebScraper.Server
                 Packet p = new Packet(PacketType.Error, url);
                 try
                 {
-                    clientSocket.Connect(ipE);
                     clientSocket.Send(p.ToBytes());
                 }
                 catch { }        

@@ -86,6 +86,8 @@ namespace WebScraper.Packets
         ServerJoined,
         ServerDisconnected,
         Download,
-        TaskStatus
+        TaskStatus,
+        ConnectionTest,
+        IpSending
     }
 }
